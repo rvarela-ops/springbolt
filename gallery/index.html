@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Odd Objects | Virtual Gallery</title>
+<meta name="description" content="A walk-through virtual art gallery. Drag to look around, follow the arrows to move between rooms.">
+<meta name="theme-color" content="#0b0b0c">
+<link rel="preload" href="fonts/syne-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<style>
+  @font-face {
+    font-family: "Syne";
+    src: url("fonts/syne-latin-wght-normal.woff2") format("woff2");
+    font-weight: 400 800;
+    font-display: swap;
+  }
+  :root {
+    --ink: #0b0b0c;
+    --paper: #f1eee6;
+    --paper-dim: #c9c4b8;
+    --acid: #d8f24a;
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; overflow: hidden; background: var(--ink); color: var(--paper); }
+  body { font-family: "Syne", sans-serif; font-weight: 500; -webkit-font-smoothing: antialiased; }
+  ::selection { background: var(--acid); color: var(--ink); }
+  :focus-visible { outline: 2px solid var(--acid); outline-offset: 3px; }
+
+  #scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+  #scene.dragging { cursor: grabbing; }
+  #scene.hot { cursor: pointer; }
+
+  /* HUD */
+  .hud { position: fixed; z-index: 2; pointer-events: none; opacity: 0; transition: opacity 0.9s var(--ease) 0.3s; }
+  body.entered .hud { opacity: 1; }
+  .hud > * { pointer-events: auto; }
+
+  .mark {
+    top: max(20px, env(safe-area-inset-top)); left: max(20px, env(safe-area-inset-left));
+    font-weight: 800; font-size: 0.95rem; letter-spacing: 0.02em; text-transform: uppercase;
+    mix-blend-mode: difference; color: #fff;
+  }
+
+  .rooms {
+    top: max(16px, env(safe-area-inset-top)); right: max(16px, env(safe-area-inset-right));
+    display: flex; gap: 4px; padding: 4px;
+    background: rgba(11, 11, 12, 0.72); border-radius: 999px;
+    -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  }
+  .rooms button {
+    font: inherit; font-size: 0.8rem; font-weight: 600; color: var(--paper-dim);
+    background: none; border: 0; border-radius: 999px; padding: 9px 15px; min-height: 40px; cursor: pointer;
+    transition: color 0.3s var(--ease), background-color 0.3s var(--ease);
+  }
+  .rooms button:hover { color: var(--paper); }
+  .rooms button[aria-current="true"] { background: var(--paper); color: var(--ink); }
+
+  .caption {
+    left: max(20px, env(safe-area-inset-left)); bottom: max(22px, env(safe-area-inset-bottom));
+    max-width: min(80vw, 420px); pointer-events: none;
+  }
+  .caption-inner {
+    display: inline-block; padding: 12px 20px 13px; border-radius: 14px;
+    background: rgba(11, 11, 12, 0.72);
+    -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+    transition: opacity 0.45s var(--ease), transform 0.45s var(--ease), filter 0.45s var(--ease);
+  }
+  .caption-inner.swap { opacity: 0; transform: translateY(8px); filter: blur(6px); }
+  .caption h2 { font-size: 1.15rem; font-weight: 700; line-height: 1.2; text-wrap: balance; }
+  .caption p { margin-top: 3px; font-size: 0.82rem; font-weight: 500; color: var(--paper-dim); }
+
+  .hint {
+    left: 50%; bottom: max(26px, env(safe-area-inset-bottom)); transform: translateX(-50%);
+    font-size: 0.8rem; font-weight: 600; white-space: nowrap; color: var(--ink); background: var(--acid);
+    padding: 8px 14px; border-radius: 999px; pointer-events: none;
+  }
+  body.moved .hint { opacity: 0; transition-delay: 0s; }
+
+  /* Entry screen */
+  .entry {
+    position: fixed; inset: 0; z-index: 5; display: grid; align-content: end; justify-items: start;
+    padding: clamp(24px, 6vw, 72px); gap: clamp(18px, 3vh, 30px);
+    background: linear-gradient(to top, rgba(11,11,12,0.94) 0%, rgba(11,11,12,0.62) 45%, rgba(11,11,12,0.3) 100%);
+    transition: opacity 1.1s var(--ease), visibility 0s linear 1.1s;
+  }
+  body.entered .entry { opacity: 0; visibility: hidden; pointer-events: none; }
+  .entry h1 {
+    font-size: clamp(2.4rem, 11vw, 6rem); font-weight: 800; line-height: 0.88; letter-spacing: -0.035em;
+    text-transform: uppercase; text-wrap: balance;
+  }
+  .entry p { max-width: 34ch; font-size: clamp(1rem, 2.2vw, 1.15rem); line-height: 1.45; color: var(--paper-dim); }
+  .enter {
+    font: inherit; font-weight: 700; font-size: 1rem; color: var(--ink); background: var(--acid);
+    border: 0; border-radius: 999px; padding: 17px 30px; min-height: 52px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 12px;
+    transition: transform 0.4s var(--ease), background-color 0.3s var(--ease);
+  }
+  .enter:hover { transform: translateX(6px); background: #e6ff5c; }
+  .enter:disabled { background: #3a3b36; color: #9a9c90; cursor: progress; transform: none; }
+  .enter svg { width: 18px; height: 18px; transition: transform 0.4s var(--ease); }
+  .enter:hover:not(:disabled) svg { transform: translateX(4px); }
+  .enter:disabled svg { display: none; }
+
+  .fail { position: fixed; inset: 0; z-index: 9; display: none; place-items: center; padding: 24px; text-align: center; background: var(--ink); }
+  .fail p { max-width: 40ch; line-height: 1.5; }
+
+  @media (max-width: 560px) {
+    .mark { display: none; }
+    .rooms button { padding: 9px 12px; font-size: 0.76rem; }
+    .hint { bottom: max(104px, calc(env(safe-area-inset-bottom) + 90px)); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .entry, .hud, .caption-inner, .enter, .enter svg { transition-duration: 0.01s; }
+  }
+</style>
+</head>
+<body>
+  <canvas id="scene" aria-label="3D gallery. Drag to look around. Use arrow keys to turn and walk."></canvas>
+
+  <div class="hud mark">Odd Objects</div>
+
+  <nav class="hud rooms" aria-label="Rooms">
+    <button type="button" data-room="A">Room 1</button>
+    <button type="button" data-room="B">Room 2</button>
+    <button type="button" data-room="C">Room 3</button>
+  </nav>
+
+  <div class="hud hint">Drag to look. Click an arrow to walk.</div>
+
+  <div class="hud caption" aria-live="polite">
+    <div class="caption-inner"><h2 id="capTitle"></h2><p id="capSub"></p></div>
+  </div>
+
+  <section class="entry" id="entry">
+    <h1>Odd<br>Objects</h1>
+    <p>Five surreal works across three rooms. Walk through at your own pace.</p>
+    <button class="enter" id="enter" type="button" disabled>
+      <span id="enterLabel">Hanging the show</span>
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10h14M11 4l6 6-6 6"/></svg>
+    </button>
+  </section>
+
+  <div class="fail" id="fail"><p>This gallery needs WebGL to run, and your browser could not start it. Try a current version of Chrome, Safari, Edge or Firefox.</p></div>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>
